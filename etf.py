@@ -22,7 +22,12 @@ def computeWm(g_x, g_y):
     return (g_y - g_x + 1)/2
 
 def computeWd(x, y):
-    return abs(np.dot(x/np.linalg.norm(x),y/np.linalg.norm(y)))
+    if(np.linalg.norm(x) == 0 or np.linalg.norm(y) == 0):
+        # print("norm is 0")
+        return 0
+    else: 
+        # print(abs(np.dot(x/np.linalg.norm(x),y/np.linalg.norm(y))))
+        return abs(np.dot(x/np.linalg.norm(x),y/np.linalg.norm(y)))
 
 # EFT function
 def etf(img, kernel_size):
@@ -71,10 +76,10 @@ def etfIter(x_a, x_b, kernel, img_t, img_grad):
             wm = computeWm(img_grad[x_a][x_b], img_grad[y_a][y_b])
             wd = computeWd(img_t[x_a][x_b], img_t[y_a][y_b])
             
-            print("phi :", phi)
-            print("ws :", ws)
-            print("wm :", wm)
-            print("wd :", wd)
+            # print("phi :", phi)
+            # print("ws :", ws)
+            # print("wm :", wm)
+            # print("wd :", wd)
 
             weigths = phi * ws * wm * wd
             sum[0] += (img_t[y_a][y_b][0] * weigths) / k
@@ -83,12 +88,14 @@ def etfIter(x_a, x_b, kernel, img_t, img_grad):
     return sum
 
 # Main
-img = cv2.imread("images/lenna.png",0)
+img = cv2.imread("images/baboon.jpg",0)
 kernel_size = 3
 
 img_res = etf(img, kernel_size)
 # print(img_res)
-print("t_res_ out:", len(img_res), " - ", len(img_res[0]))
+print("ETF not normalized:", len(img_res), " - ", len(img_res[0]))
+# cv2.imshow("ETF not normalized",img_res)
+
 # Normalisation for display
 # img_res_norm = np.hypot(img_res[:][:][0],img_res[:][:][1])
 
@@ -98,9 +105,10 @@ for i in range(height):
     for j in range(width):
         img_res_norm[i][j] = math.sqrt( (img_res[i][j][0] **2 ) + (img_res[i][j][1] **2 ) ) 
 
-print("t_res norm:", len(img_res_norm), " - ", len(img_res_norm[0]))
+print("ETF normalized:", len(img_res_norm), " - ", len(img_res_norm[0]))
 # print(img_res_norm)
-cv2.imshow("res",img_res_norm)
+cv2.imwrite("ETF_normalized.jpg", img_res_norm)
+cv2.imshow("ETF normalized", img_res_norm)
 cv2.waitKey(0)
 
 # plt.figure(1)
