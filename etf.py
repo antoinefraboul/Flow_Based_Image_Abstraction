@@ -2,7 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import cv2
 import math
-from PIL import Image
+from licpy.lic import runlic
+from licpy.plot import grey_save
 
 def computePhi(x, y):
     if np.dot(x, y) > 0:
@@ -19,7 +20,7 @@ def computeWs(a, b, kernel_size):
     else: return 0
 
 def computeWm(g_x, g_y):
-    return (g_y - g_x + 1)/2
+    return (1 + np.tanh(g_y - g_x))/2
 
 def computeWd(x, y):
     if(np.linalg.norm(x) == 0 or np.linalg.norm(y) == 0):
@@ -45,17 +46,17 @@ def etfIter(img, kernel_size, img_grad, img_t):
 # One iteration of ETF
 def etfKernel(x_a, x_b, kernel, img_t, img_grad):
     
-    sum = [0,0]
-    k = kernel**2
-    
+    sum = (0,0)
+    # k = kernel**2
+    k = 0
+
     height, width = len(img_t), len(img_t[0])
 
-    for y_a in range(x_a-kernel//2, x_a+kernel//2):
-        for y_b in range(x_b-kernel//2, x_b+kernel//2):
+    for y_a in range(x_a-kernel//2, x_a+kernel//2 + 1):
+        for y_b in range(x_b-kernel//2, x_b+kernel//2 + 1):
             # Gestion des bords
             if(y_a<0 or y_b<0 or y_a>=height or y_b>=width): 
                 continue
-            res = [0,0]
             phi = computePhi(img_t[x_a][x_b], img_t[y_a][y_b])
             
             a = np.array([x_a, x_b])
@@ -70,14 +71,21 @@ def etfKernel(x_a, x_b, kernel, img_t, img_grad):
             # print("wd :", wd)
 
             weigths = phi * ws * wm * wd
-            sum[0] += (img_t[y_a][y_b][0] * weigths) / k
-            sum[1] += (img_t[y_a][y_b][1] * weigths) / k
-    
+            sum += (img_t[y_a][y_b] * weigths)# / k
+            #sum[1] += (img_t[y_a][y_b][1] * weigths)# / k
+
+            k += weigths
+
+    #if k !=0 :
+     #   sum[0] = sum[0] / k
+      #  sum[1] = sum[1] / k
+    n = sum
+    cv2.normalize(sum, n)
     return sum
 
-def displayImgT(img_t, text, block):
+def displayImgT(img_t, text):
     height, width = img.shape
-    img_res_norm = np.zeros((height,width), np.float64)
+    img_res_norm = np.zeros((height,width), np.float32)
 
     for i in range(height):
         for j in range(width):
@@ -88,17 +96,24 @@ def displayImgT(img_t, text, block):
     
     #cv2.imwrite("ETF_normalized.jpg", img_res_norm/max_val * 255)
     cv2.imshow(text, img_res_norm/max_val)
-    if block : cv2.waitKey(0)
 
 def etf(img_src, nb_iter, kernel_size, display):
+    
     height, width = img_src.shape
+    size = (height, width, 3)
+
+    src_n = np.zeros(size, dtype = np.float32)
+    src_n = cv2.normalize(img_src.astype('float32'), None, 0.0, 1.0, cv2.NORM_MINMAX)
 
     # Solbel filter to get the gradient
-    sobel_x = cv2.Sobel(img_src,cv2.CV_64F,1,0,ksize=5)
-    sobel_y = cv2.Sobel(img_src,cv2.CV_64F,0,1,ksize=5)
+    sobel_x = cv2.Sobel(src_n,cv2.CV_32FC1,1,0,ksize=5)
+    sobel_y = cv2.Sobel(src_n,cv2.CV_32FC1,0,1,ksize=5)
 
-    img_grad = np.hypot(sobel_x, sobel_y) # Take the magnitude of the gradient
-    img_grad = cv2.normalize(img_grad.astype('float32'), None, 0.0, 1.0, cv2.NORM_MINMAX) # Normalize the gradient magnitude
+    # img_grad = np.hypot(sobel_x, sobel_y) # Take the magnitude of the gradient
+    # img_grad = cv2.normalize(img_grad.astype('float32'), None, 0.0, 1.0, cv2.NORM_MINMAX) # Normalize the gradient magnitude
+    img_grad = cv2.sqrt(sobel_x**2.0 + sobel_y**2.0) 
+    img_grad = cv2.normalize(img_grad.astype('float32'), None, 0.0, 1.0, cv2.NORM_MINMAX)
+
 
     img_t = [[[0,0] for x in range(width)] for y in range(height)] # t(y)
 
@@ -106,21 +121,32 @@ def etf(img_src, nb_iter, kernel_size, display):
         for j in range(len(img[i])):
             img_t[i][j] = [sobel_y[i][j], -sobel_x[i][j]]
 
-    if display : displayImgT(img_t, "Img t before", False)
+    cv2.imshow("img_grad", img_grad)
 
-    for i in range(0,3):
-        img_t = etfIter(img, kernel_size, img_grad, img_t)
+    for i in range(0,nb_iter):
+        img_t = etfIter(img, kernel_size, img_grad,  np.copy(img_t))
 
-    img_res = img_t
+    h = len(img_t)
+    w = len(img_t[0])
+    vx = np.zeros((h,w))
+    vy = np.zeros((h,w))
+    
+    for i in range(0, h):
+        for j in range (0, w):
+            vx[i][j] = img_t[i][j][0]
+            vy[i][j] = img_t[i][j][1]
 
+    tex = runlic(vx, vy, 21)
+    grey_save("res/lic.jpg", tex)
+    
     if display:
-        print("ETF not normalized:", len(img_res), " - ", len(img_res[0]))
-        displayImgT(img_res, "Img res", True)
+        displayImgT(img_t, "Img res")
+        cv2.waitKey(0)
 
-    return img_res
+    return img_t
 
 # Main
-img = cv2.imread("images/baboon.jpg",0)
-height, width = img.shape
+if __name__ == '__main__':
+    img = cv2.imread("images/baboon.jpg", 0)
 
-etf(img, 3, 3, True)
+    etf(img, 3, 3, True)
