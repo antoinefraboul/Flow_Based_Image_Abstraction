@@ -12,9 +12,6 @@ def computePhi(x, y):
 
 def computeWs(a, b, kernel_size):
     norm = np.linalg.norm(a - b)
-    # print("a", a)
-    # print("b", b)
-    # print('Norm :', norm)
     if norm < kernel_size:
         return 1
     else: return 0
@@ -37,8 +34,8 @@ def etfIter(img, kernel_size, img_grad, img_t):
     height, width = img.shape
     img_t_res = [[[0,0] for x in range(width)] for y in range(height)] # t(^x)
     
-    for i in range(len(img_t_res)):
-        for j in range(len(img_t_res[0])):
+    for i in range(height):
+        for j in range(width):
             img_t_res[i][j] = etfKernel(i, j, kernel_size, img_t, img_grad)
             # print("sum: ",img_t_res[i][j])
     return img_t_res
@@ -50,7 +47,8 @@ def etfKernel(x_a, x_b, kernel, img_t, img_grad):
     # k = kernel**2
     k = 0
 
-    height, width = len(img_t), len(img_t[0])
+    #height, width = len(img_t), len(img_t[0])
+    height, width, _ = img_t.shape
 
     for y_a in range(x_a-kernel//2, x_a+kernel//2 + 1):
         for y_b in range(x_b-kernel//2, x_b+kernel//2 + 1):
@@ -81,7 +79,7 @@ def etfKernel(x_a, x_b, kernel, img_t, img_grad):
       #  sum[1] = sum[1] / k
     n = sum
     cv2.normalize(sum, n)
-    return sum
+    return n
 
 def displayImgT(img_t, text):
     height, width = img.shape
@@ -91,11 +89,12 @@ def displayImgT(img_t, text):
         for j in range(width):
             img_res_norm[i][j] = math.sqrt( (img_t[i][j][0] **2 ) + (img_t[i][j][1] **2 ) ) 
 
-    max_val = np.max(img_res_norm)
+    cv2.normalize(img_res_norm.astype('float32'), None, 0.0, 1.0, cv2.NORM_MINMAX)
+    #max_val = np.max(img_res_norm)
     print(text+" size :", len(img_res_norm), " - ", len(img_res_norm[0]))
     
     #cv2.imwrite("ETF_normalized.jpg", img_res_norm/max_val * 255)
-    cv2.imshow(text, img_res_norm/max_val)
+    cv2.imshow(text, img_res_norm)
 
 def etf(img_src, nb_iter, kernel_size, display):
     
@@ -109,25 +108,29 @@ def etf(img_src, nb_iter, kernel_size, display):
     sobel_x = cv2.Sobel(src_n,cv2.CV_32FC1,1,0,ksize=5)
     sobel_y = cv2.Sobel(src_n,cv2.CV_32FC1,0,1,ksize=5)
 
-    # img_grad = np.hypot(sobel_x, sobel_y) # Take the magnitude of the gradient
-    # img_grad = cv2.normalize(img_grad.astype('float32'), None, 0.0, 1.0, cv2.NORM_MINMAX) # Normalize the gradient magnitude
-    img_grad = cv2.sqrt(sobel_x**2.0 + sobel_y**2.0) 
-    img_grad = cv2.normalize(img_grad.astype('float32'), None, 0.0, 1.0, cv2.NORM_MINMAX)
-
+    img_grad = cv2.sqrt(sobel_x**2.0 + sobel_y**2.0) # Take the magnitude of the gradient
+    img_grad = cv2.normalize(img_grad.astype('float32'), None, 0.0, 1.0, cv2.NORM_MINMAX) # Normalize the gradient magnitude
+    cv2.imshow("img_grad", img_grad)
 
     img_t = [[[0,0] for x in range(width)] for y in range(height)] # t(y)
 
-    for i in range(len(img)):
-        for j in range(len(img[i])):
-            img_t[i][j] = [sobel_y[i][j], -sobel_x[i][j]]
+    for i in range(height):
+        for j in range(width):
+            #ampl = math.sqrt(sobel_y[i][j]**2.0 + sobel_x[i][j]**2.0)+0.01
+            ampl = 1.0
+            n = [-sobel_y[i][j] / ampl, sobel_x[i][j] / ampl]
+            img_t[j][-i] = n
 
-    cv2.imshow("img_grad", img_grad)
-
+    # ETF iterations
     for i in range(0,nb_iter):
+        print("ETF iteration "+str(i)+"...")
         img_t = etfIter(img, kernel_size, img_grad,  np.copy(img_t))
+        print("Done.")
 
-    h = len(img_t)
-    w = len(img_t[0])
+    # Line integral convolution
+    # h = len(img_t)
+    # w = len(img_t[0])
+    h, w = img_src.shape
     vx = np.zeros((h,w))
     vy = np.zeros((h,w))
     
@@ -139,14 +142,16 @@ def etf(img_src, nb_iter, kernel_size, display):
     tex = runlic(vx, vy, 21)
     grey_save("res/lic.jpg", tex)
     
+    
     if display:
-        displayImgT(img_t, "Img res")
+        #displayImgT(img_t, "Img res")
+        cv2.imshow("LIC ETF", cv2.imread("res/lic.jpg", 0))
         cv2.waitKey(0)
 
     return img_t
 
 # Main
 if __name__ == '__main__':
-    img = cv2.imread("images/baboon.jpg", 0)
+    img = cv2.imread("images/flower.jpg", 0)
 
-    etf(img, 3, 3, True)
+    etf(img, 0, 3, True)
