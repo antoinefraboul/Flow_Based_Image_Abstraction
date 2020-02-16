@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import cv2
 import math
+from numpy import linalg as LA
 from licpy.lic import runlic
 from licpy.plot import grey_save
 
@@ -68,11 +69,13 @@ def etfKernel(x_a, x_b, kernel, img_t, img_grad):
             # print("wm :", wm)
             # print("wd :", wd)
 
+            
             weigths = phi * ws * wm * wd
-            sum += (img_t[y_a][y_b] * weigths)# / k
+            k += weigths
+            sum += (img_t[y_a][y_b] * weigths) / k
             #sum[1] += (img_t[y_a][y_b][1] * weigths)# / k
 
-            k += weigths
+            
 
     #if k !=0 :
      #   sum[0] = sum[0] / k
@@ -98,33 +101,53 @@ def displayImgT(img_t, text):
 
 def etf(img_src, nb_iter, kernel_size, display):
     
-    height, width = img_src.shape
-    size = (height, width, 3)
+    # img_src = np.divide(img_src, 255.0)
 
-    src_n = np.zeros(size, dtype = np.float32)
-    src_n = cv2.normalize(img_src.astype('float32'), None, 0.0, 1.0, cv2.NORM_MINMAX)
+    # src_n = img_src.copy()
 
-    # Solbel filter to get the gradient
-    sobel_x = cv2.Sobel(src_n,cv2.CV_32FC1,1,0,ksize=5)
-    sobel_y = cv2.Sobel(src_n,cv2.CV_32FC1,0,1,ksize=5)
+    # height, width = img_src.shape
+    # size = (height, width, 3)
 
-    img_grad = cv2.sqrt(sobel_x**2.0 + sobel_y**2.0) # Take the magnitude of the gradient
-    img_grad = cv2.normalize(img_grad.astype('float32'), None, 0.0, 1.0, cv2.NORM_MINMAX) # Normalize the gradient magnitude
-    cv2.imshow("img_grad", img_grad)
+    # #src_n = np.zeros(size, dtype = np.float32)
+    # #src_n = cv2.normalize(img_src.astype('float32'), None, 0.0, 1.0, cv2.NORM_MINMAX)
 
-    img_t = [[[0,0] for x in range(width)] for y in range(height)] # t(y)
+    # # Solbel filter to get the gradient
+    # sobel_x = cv2.Sobel(src_n,cv2.CV_64F,1,0,ksize=5)
+    # sobel_y = cv2.Sobel(src_n,cv2.CV_64F,0,1,ksize=5)
 
-    for i in range(height):
-        for j in range(width):
-            #ampl = math.sqrt(sobel_y[i][j]**2.0 + sobel_x[i][j]**2.0)+0.01
-            ampl = 1.0
-            n = [-sobel_y[i][j] / ampl, sobel_x[i][j] / ampl]
-            img_t[j][-i] = n
+    # img_grad = cv2.sqrt(sobel_x**2.0 + sobel_y**2.0) # Take the magnitude of the gradient
+    # img_grad = cv2.normalize(img_grad.astype('float32'), None, 0.0, 1.0, cv2.NORM_MINMAX) # Normalize the gradient magnitude
+    # cv2.imshow("img_grad", img_grad)
+
+    # img_t = [[[0,0] for x in range(width)] for y in range(height)] # t(y)
+
+    # for i in range(height):
+    #     for j in range(width):
+    #         ampl = math.sqrt(sobel_y[i][j]**2.0 + sobel_x[i][j]**2.0)+0.01
+    #         #ampl = 1.0
+    #         n = [-sobel_y[i][j] / ampl, sobel_x[i][j] / ampl]
+    #         img_t[j][-i] = n
+    #         #img_t[i][j] = n
+
+    gray_image = np.divide(img_src, 255.0)
+    sobelx = cv2.Sobel(gray_image, cv2.CV_64F, 1, 0, ksize=5)
+    sobely = cv2.Sobel(gray_image, cv2.CV_64F, 0, 1, ksize=5)
+    sobelmag = np.sqrt(np.multiply(sobelx, sobelx) + np.multiply(sobely, sobely))
+    img_grad = np.divide(sobelmag, np.amax(sobelmag))
+	
+    tangx = -1 * sobely
+    tangy = sobelx
+    tang = np.stack([tangx, tangy], axis=2)
+    size = tang.shape
+	
+    tangnorm = LA.norm(tang, axis=2)
+    np.place(tangnorm, tangnorm == 0, [1])
+    img_t = np.divide(tang, np.stack([tangnorm, tangnorm], axis=2))
 
     # ETF iterations
     for i in range(0,nb_iter):
         print("ETF iteration "+str(i)+"...")
-        img_t = etfIter(img, kernel_size, img_grad,  np.copy(img_t))
+        img_t = etfIter(img_src, kernel_size, img_grad,  np.copy(img_t))
         print("Done.")
 
     # Line integral convolution
@@ -152,6 +175,7 @@ def etf(img_src, nb_iter, kernel_size, display):
 
 # Main
 if __name__ == '__main__':
-    img = cv2.imread("images/flower.jpg", 0)
-
-    etf(img, 0, 3, True)
+    img = cv2.imread("images/per.jpg", 1)
+    gray_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    
+    etf(gray_image, 0, 3, True)
